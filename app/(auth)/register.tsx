@@ -1,3 +1,4 @@
+import ThemedAlert, { useThemedAlert } from "@/components/ThemedAlert";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { router } from "expo-router";
 import { useState } from "react";
@@ -12,6 +13,17 @@ import {
   View,
 } from "react-native";
 
+// Firebase Realtime Database URL
+const FIREBASE_URL =
+  "https://gsafe-eeead-default-rtdb.asia-southeast1.firebasedatabase.app/";
+
+interface UserData {
+  fullName: string;
+  email: string;
+  password: string;
+  createdAt: string;
+}
+
 export default function Register() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -19,10 +31,158 @@ export default function Register() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const { alertConfig, showAlert, hideAlert } = useThemedAlert();
 
-  const handleRegister = () => {
-    // TODO: add real auth logic
-    router.replace("/(tabs)/dashboard");
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const checkEmailExists = async (email: string): Promise<boolean> => {
+    try {
+      const normalizedEmail = email.toLowerCase().replace(".", "_");
+      const response = await fetch(
+        `${FIREBASE_URL}users/${normalizedEmail}.json`,
+      );
+      const data = await response.json();
+      return data !== null;
+    } catch (error) {
+      console.error("Error checking email:", error);
+      return false;
+    }
+  };
+
+  const saveUserToFirebase = async (
+    email: string,
+    userData: UserData,
+  ): Promise<boolean> => {
+    try {
+      const normalizedEmail = email.toLowerCase().replace(".", "_");
+      const response = await fetch(
+        `${FIREBASE_URL}users/${normalizedEmail}.json`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(userData),
+        },
+      );
+      return response.ok;
+    } catch (error) {
+      console.error("Error saving user:", error);
+      return false;
+    }
+  };
+
+  const handleRegister = async () => {
+    // Validate required fields
+    if (!fullName.trim()) {
+      showAlert("Validation Error", "Please enter your full name", [
+        { text: "OK", style: "default" },
+      ]);
+      return;
+    }
+
+    if (!email.trim()) {
+      showAlert("Validation Error", "Please enter your email", [
+        { text: "OK", style: "default" },
+      ]);
+      return;
+    }
+
+    if (!validateEmail(email)) {
+      showAlert("Validation Error", "Please enter a valid email address", [
+        { text: "OK", style: "default" },
+      ]);
+      return;
+    }
+
+    if (!password) {
+      showAlert("Validation Error", "Please enter a password", [
+        { text: "OK", style: "default" },
+      ]);
+      return;
+    }
+
+    if (password.length < 6) {
+      showAlert(
+        "Validation Error",
+        "Password must be at least 6 characters long",
+        [{ text: "OK", style: "default" }],
+      );
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      showAlert("Validation Error", "Passwords do not match", [
+        { text: "OK", style: "default" },
+      ]);
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      // Check if email already exists
+      const emailExists = await checkEmailExists(email);
+
+      if (emailExists) {
+        showAlert(
+          "Registration Error",
+          "This email is already registered. Please use a different email or try logging in.",
+          [
+            {
+              text: "Sign In",
+              style: "default",
+              onPress: () => router.push("/login"),
+            },
+          ],
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      // Save user to Firebase
+      const userData: UserData = {
+        fullName: fullName.trim(),
+        email: email.toLowerCase().trim(),
+        password: password, // Note: In production, use proper password hashing!
+        createdAt: new Date().toISOString(),
+      };
+
+      const success = await saveUserToFirebase(email, userData);
+
+      if (success) {
+        showAlert(
+          "Success!",
+          "Your account has been created successfully. Welcome to LPG Protector!",
+          [
+            {
+              text: "OK",
+              style: "default",
+              onPress: () => router.replace("/(tabs)/dashboard"),
+            },
+          ],
+        );
+      } else {
+        showAlert(
+          "Registration Failed",
+          "There was an error creating your account. Please try again.",
+          [{ text: "OK", style: "default" }],
+        );
+      }
+    } catch (error) {
+      showAlert(
+        "Error",
+        "An unexpected error occurred. Please check your connection and try again.",
+        [{ text: "OK", style: "default" }],
+      );
+      console.error("Registration error:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -62,18 +222,20 @@ export default function Register() {
               placeholderTextColor="#888"
               value={email}
               onChangeText={setEmail}
+              editable={!isLoading}
             />
           </View>
 
           <View style={styles.inputContainer}>
             <IconSymbol size={20} name="lock" color="#888" />
             <TextInput
-              placeholder="Password"
+              placeholder="Password (min 6 characters)"
               style={styles.input}
               secureTextEntry={!showPassword}
               placeholderTextColor="#888"
               value={password}
               onChangeText={setPassword}
+              editable={!isLoading}
             />
             <TouchableOpacity
               style={styles.eyeButton}
@@ -96,6 +258,7 @@ export default function Register() {
               placeholderTextColor="#888"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
+              editable={!isLoading}
             />
             <TouchableOpacity
               style={styles.eyeButton}
@@ -109,8 +272,14 @@ export default function Register() {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.button} onPress={handleRegister}>
-            <Text style={styles.buttonText}>CREATE ACCOUNT</Text>
+          <TouchableOpacity
+            style={[styles.button, isLoading && styles.buttonDisabled]}
+            onPress={handleRegister}
+            disabled={isLoading}
+          >
+            <Text style={styles.buttonText}>
+              {isLoading ? "Creating Account..." : "CREATE ACCOUNT"}
+            </Text>
           </TouchableOpacity>
 
           <View style={styles.divider}>
@@ -122,11 +291,21 @@ export default function Register() {
           <TouchableOpacity
             style={styles.fullWidthButton}
             onPress={() => router.push("/login")}
+            disabled={isLoading}
           >
             <Text style={styles.fullWidthButtonText}>Sign In</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Themed Alert */}
+      <ThemedAlert
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        buttons={alertConfig.buttons}
+        onDismiss={hideAlert}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -188,6 +367,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 5,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   buttonText: {
     color: "#fff",

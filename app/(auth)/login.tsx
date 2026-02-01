@@ -1,3 +1,4 @@
+import ThemedAlert, { useThemedAlert } from "@/components/ThemedAlert";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useAuth } from "@/contexts/AuthContext";
 import { router } from "expo-router";
@@ -13,16 +14,127 @@ import {
   View,
 } from "react-native";
 
+// Firebase Realtime Database URL
+const FIREBASE_URL =
+  "https://gsafe-eeead-default-rtdb.asia-southeast1.firebasedatabase.app/";
+
+interface UserData {
+  fullName: string;
+  email: string;
+  password: string;
+  createdAt: string;
+}
+
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const { alertConfig, showAlert, hideAlert } = useThemedAlert();
   const { login } = useAuth();
 
-  const handleLogin = () => {
-    // TODO: add real auth logic
-    login();
-    router.replace("/(tabs)/dashboard");
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const fetchUserFromFirebase = async (
+    email: string,
+  ): Promise<UserData | null> => {
+    try {
+      const normalizedEmail = email.toLowerCase().replace(".", "_");
+      const response = await fetch(
+        `${FIREBASE_URL}users/${normalizedEmail}.json`,
+      );
+      if (response.ok) {
+        return await response.json();
+      }
+      return null;
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      return null;
+    }
+  };
+
+  const handleLogin = async () => {
+    // Validate required fields
+    if (!email.trim()) {
+      showAlert("Validation Error", "Please enter your email", [
+        { text: "OK", style: "default" },
+      ]);
+      return;
+    }
+
+    if (!validateEmail(email)) {
+      showAlert("Validation Error", "Please enter a valid email address", [
+        { text: "OK", style: "default" },
+      ]);
+      return;
+    }
+
+    if (!password) {
+      showAlert("Validation Error", "Please enter your password", [
+        { text: "OK", style: "default" },
+      ]);
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      // Fetch user from Firebase
+      const userData = await fetchUserFromFirebase(email);
+
+      if (!userData) {
+        showAlert(
+          "Login Failed",
+          "No account found with this email. Please create an account first.",
+          [
+            {
+              text: "Create Account",
+              style: "default",
+              onPress: () => router.push("/register"),
+            },
+          ],
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      // Check password
+      if (userData.password !== password) {
+        showAlert("Login Failed", "Incorrect password. Please try again.", [
+          { text: "OK", style: "default" },
+        ]);
+        setIsLoading(false);
+        return;
+      }
+
+      // Login successful - save to local storage via AuthContext
+      login();
+
+      // Show success message
+      showAlert(
+        "Welcome Back!",
+        `Hello, ${userData.fullName}! You've successfully logged in.`,
+        [
+          {
+            text: "OK",
+            style: "default",
+            onPress: () => router.replace("/(tabs)/dashboard"),
+          },
+        ],
+      );
+    } catch (error) {
+      showAlert(
+        "Error",
+        "An unexpected error occurred. Please check your connection and try again.",
+        [{ text: "OK", style: "default" }],
+      );
+      console.error("Login error:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -56,6 +168,7 @@ export default function Login() {
               placeholderTextColor="#888"
               value={email}
               onChangeText={setEmail}
+              editable={!isLoading}
             />
           </View>
 
@@ -68,6 +181,7 @@ export default function Login() {
               placeholderTextColor="#888"
               value={password}
               onChangeText={setPassword}
+              editable={!isLoading}
             />
             <TouchableOpacity
               style={styles.eyeButton}
@@ -81,8 +195,14 @@ export default function Login() {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.button} onPress={handleLogin}>
-            <Text style={styles.buttonText}>SIGN IN</Text>
+          <TouchableOpacity
+            style={[styles.button, isLoading && styles.buttonDisabled]}
+            onPress={handleLogin}
+            disabled={isLoading}
+          >
+            <Text style={styles.buttonText}>
+              {isLoading ? "Signing In..." : "SIGN IN"}
+            </Text>
           </TouchableOpacity>
 
           <View style={styles.divider}>
@@ -94,11 +214,21 @@ export default function Login() {
           <TouchableOpacity
             style={styles.fullWidthButton}
             onPress={() => router.push("/register")}
+            disabled={isLoading}
           >
             <Text style={styles.fullWidthButtonText}>Create Account</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Themed Alert */}
+      <ThemedAlert
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        buttons={alertConfig.buttons}
+        onDismiss={hideAlert}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -204,6 +334,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 5,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   buttonText: {
     color: "#fff",
