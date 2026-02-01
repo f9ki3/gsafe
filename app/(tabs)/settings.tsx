@@ -1,4 +1,5 @@
 import { IconSymbol } from "@/components/ui/icon-symbol";
+import { useAuth } from "@/contexts/AuthContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { router } from "expo-router";
 import {
@@ -20,8 +21,10 @@ const researchers = [
 
 export default function Settings() {
   const { mode, setMode } = useSettings();
+  const { logout } = useAuth();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await logout();
     router.replace("/(auth)/login");
   };
 
