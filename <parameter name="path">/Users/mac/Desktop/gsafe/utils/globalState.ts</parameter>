@@ -1,0 +1,20 @@
+<parameter name="content">// Simple global state for app settings
+type Mode = "auto" | "manual";
+
+let currentMode: Mode = "auto";
+const listeners: Set<(mode: Mode) => void> = new Set();
+
+export function setMode(mode: Mode) {
+  currentMode = mode;
+  listeners.forEach((listener) => listener(mode));
+}
+
+export function getMode(): Mode {
+  return currentMode;
+}
+
+export function subscribeToMode(listener: (mode: Mode) => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+</parameter>
