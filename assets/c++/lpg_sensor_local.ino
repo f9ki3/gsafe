@@ -37,9 +37,6 @@ int  lastServoAngle = -1;
 Mode lastMode = AUTO;
 bool lastManualState = false;
 
-// 🔥 Firebase gas value (SINGLE SOURCE OF TRUTH)
-int firebaseGasLevel = 0;
-
 // ================= TIMING =================
 unsigned long lastGasLogTime = 0;
 unsigned long lastFirebaseTime = 0;
@@ -65,21 +62,20 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
-  // 🔹 Local sensor is ONLY for reporting
+  // 🔥 LOCAL SENSOR (decision source in AUTO)
   int localGasLevel = analogRead(GAS_SENSOR);
 
   if (now - lastGasLogTime >= GAS_LOG_INTERVAL) {
-    logWithTime("Local sensor gas: " + String(localGasLevel));
+    logWithTime("Local gas level: " + String(localGasLevel));
     lastGasLogTime = now;
   }
 
   if (now - lastFirebaseTime >= FIREBASE_READ_INTERVAL) {
     readFirebaseConfig();
-    readFirebaseGasLevel();
     lastFirebaseTime = now;
   }
 
-  handleMode();
+  handleMode(localGasLevel);
   sendGasLevel(localGasLevel);
 }
 
@@ -95,22 +91,22 @@ void connectWiFi() {
 }
 
 // ================= MODE LOGIC =================
-void handleMode() {
+void handleMode(int localGasLevel) {
 
   if (mode == AUTO) {
 
     if (mode != lastMode) {
-      logWithTime("MODE: AUTO");
+      logWithTime("MODE: AUTO (LOCAL SENSOR)");
       lastMode = mode;
     }
 
-    // 🔥 SERVO based on FIREBASE gas
-    bool gasSafe = firebaseGasLevel < GAS_THRESHOLD;
-    setServo(gasSafe);
+    bool gasSafe = localGasLevel < GAS_THRESHOLD;
 
-    // 🔥 BUZZER based on FIREBASE gas
-    bool buzzerShouldBeOn = firebaseGasLevel >= GAS_THRESHOLD;
-    setBuzzer(buzzerShouldBeOn, firebaseGasLevel);
+    // 🔥 SERVO: LOCAL SENSOR
+    setServo(gasSafe, localGasLevel);
+
+    // 🔥 BUZZER: LOCAL SENSOR
+    setBuzzer(!gasSafe, localGasLevel);
 
   } else { // MANUAL MODE
 
@@ -120,29 +116,33 @@ void handleMode() {
     }
 
     if (manualIsOn != lastManualState) {
-      setServo(manualIsOn);
+      setServo(manualIsOn, -1);
       lastManualState = manualIsOn;
     }
 
-    // 🔒 Manual mode: buzzer forced OFF
-    setBuzzer(false, firebaseGasLevel);
+    // 🔒 Manual mode: buzzer always OFF
+    setBuzzer(false, localGasLevel);
   }
 }
 
 // ================= SERVO =================
-void setServo(bool open) {
+void setServo(bool open, int gasLevel) {
   int angle = open ? SERVO_OPEN : SERVO_CLOSED;
 
   if (angle != lastServoAngle) {
     myservo.write(angle);
     lastServoAngle = angle;
 
-    logWithTime(
-      String("Servo ") +
-      (open ? "OPEN" : "CLOSED") +
-      " | FIREBASE GAS: " +
-      String(firebaseGasLevel)
-    );
+    if (gasLevel >= 0) {
+      logWithTime(
+        String("Servo ") +
+        (open ? "OPEN" : "CLOSED") +
+        " | LOCAL GAS: " +
+        String(gasLevel)
+      );
+    } else {
+      logWithTime(String("Servo ") + (open ? "OPEN" : "CLOSED"));
+    }
   }
 }
 
@@ -154,9 +154,9 @@ void setBuzzer(bool on, int gasLevel) {
   buzzerState = on;
 
   if (on) {
-    logWithTime("🚨 BUZZER ON | FIREBASE GAS: " + String(gasLevel));
+    logWithTime("🚨 BUZZER ON | LOCAL GAS: " + String(gasLevel));
   } else {
-    logWithTime("✅ BUZZER OFF | FIREBASE GAS: " + String(gasLevel));
+    logWithTime("✅ BUZZER OFF | LOCAL GAS: " + String(gasLevel));
   }
 }
 
@@ -185,22 +185,6 @@ void readFirebaseConfig() {
     body.trim();
     manualIsOn = (body == "true");
     logWithTime(String("Manual state: ") + (manualIsOn ? "ON" : "OFF"));
-  }
-}
-
-// 🔥 FIREBASE GAS LEVEL READ
-void readFirebaseGasLevel() {
-
-  https.beginRequest();
-  https.get("/sensors/gasLevel/level.json");
-  https.endRequest();
-
-  if (https.responseStatusCode() == 200) {
-    String body = https.responseBody();
-    body.trim();
-    firebaseGasLevel = body.toInt();
-
-    logWithTime("Firebase gas level: " + String(firebaseGasLevel));
   }
 }
 
