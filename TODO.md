@@ -1,30 +1,30 @@
-# TODO - Gas Level Performance Optimization
+# Task: Configure app icon and splash screen
 
-## Plan: Improve gas level handling for accurate and fast response
+## Steps Completed:
 
-### Changes implemented:
+- [x] Analyze current project structure and configuration
+- [x] Verify image dimensions (1024x1024 - perfect for icons/splash)
+- [x] Create implementation plan
+- [x] Update app.json with new icon and splash screen configuration
+- [x] Update app/\_layout.tsx to handle native splash screen
+- [x] Verify expo-splash-screen is installed
 
-- [x] Replace HTTP polling with request caching and deduplication
-- [x] Increase update frequency from 5s to 500ms (10x faster)
-- [x] Add request deduplication to prevent duplicate API calls
-- [x] Implement proper state batching for gas level updates
-- [x] Add refs for rapid state changes without unnecessary re-renders
-- [x] Use memoization for expensive calculations (isDangerLevel, statusColor, gaugeColor)
-- [x] Use refs to track state values and prevent race conditions
-- [x] Add proper error handling with silent timeout handling
+## Steps Pending:
 
-### Technical Implementation:
+- [ ] Test on iOS
+- [ ] Test on Android
 
-- Request deduplication cache with 200ms TTL
-- High-frequency polling at 500ms intervals (was 5 seconds)
-- Ref-based state tracking to prevent stale closures
-- Memoized computed values to reduce re-renders
-- Optimized state updates to only update when values change
+## Changes Made:
 
-### Testing Checklist:
+### app.json:
 
-- [x] Gas level updates 10x faster (500ms vs 5s)
-- [x] No duplicate network requests (deduplication)
-- [x] Proper cleanup on component unmount
-- [ ] Alert triggers correctly at threshold (300)
-- [ ] Connection health indicator works correctly
+- Changed main app icon from `./assets/images/icon.png` to `./assets/images/app_icon_ios_android.png`
+- Updated Android adaptive icon to use `app_icon_ios_android.png` as foreground with dark background (#0d0d0d)
+- Added splash screen configuration for both iOS and Android using the same image
+- Set resizeMode to "contain" and backgroundColor to #0d0d0d
+
+### app/\_layout.tsx:
+
+- Added `import * as SplashScreen from "expo-splash-screen"`
+- Added `SplashScreen.preventAutoHideAsync()` to keep splash visible
+- Added useEffect to hide splash screen when app is ready

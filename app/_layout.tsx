@@ -1,9 +1,13 @@
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { SettingsProvider } from "@/contexts/SettingsContext";
 import { Stack, useRootNavigationState, useRouter } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+
+// Keep the splash screen visible while we hide it
+SplashScreen.preventAutoHideAsync();
 
 function LoadingScreen() {
   return (
@@ -19,6 +23,16 @@ function RootNavigator() {
   const router = useRouter();
   const rootState = useRootNavigationState();
   const [hasNavigated, setHasNavigated] = useState(false);
+
+  useEffect(() => {
+    // Hide splash screen when app is ready
+    const hideSplash = async () => {
+      if (!isLoading && rootState?.key) {
+        await SplashScreen.hideAsync();
+      }
+    };
+    hideSplash();
+  }, [isLoading, rootState?.key]);
 
   useEffect(() => {
     // Wait for navigation state to be ready and auth to be loaded

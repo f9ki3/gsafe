@@ -1,25 +1,38 @@
 {
   "expo": {
-    "name": "gsafe",
-    "slug": "gsafe",
+    "name": "LPG Protector",
+    "slug": "lpg-protector",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "gsafe",
+    "icon": "./assets/images/app_icon_ios_android.png",
+    "scheme": "lpg-protector",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/app_icon_ios_android.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0d0d0d"
+    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "splash": {
+        "image": "./assets/images/app_icon_ios_android.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#0d0d0d"
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#0d0d0d",
+        "foregroundImage": "./assets/images/app_icon_ios_android.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "splash": {
+        "image": "./assets/images/app_icon_ios_android.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#0d0d0d"
+      }
     },
     "web": {
       "output": "static",
