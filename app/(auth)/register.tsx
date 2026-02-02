@@ -1,5 +1,6 @@
 import ThemedAlert, { useThemedAlert } from "@/components/ThemedAlert";
 import { IconSymbol } from "@/components/ui/icon-symbol";
+import { useAuth } from "@/contexts/AuthContext";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
@@ -33,6 +34,7 @@ export default function Register() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { alertConfig, showAlert, hideAlert } = useThemedAlert();
+  const { login } = useAuth();
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -136,7 +138,7 @@ export default function Register() {
             {
               text: "Sign In",
               style: "default",
-              onPress: () => router.push("/login"),
+              onPress: () => router.replace("/(auth)/login"),
             },
           ],
         );
@@ -155,17 +157,13 @@ export default function Register() {
       const success = await saveUserToFirebase(email, userData);
 
       if (success) {
-        showAlert(
-          "Success!",
-          "Your account has been created successfully. Welcome to LPG Protector!",
-          [
-            {
-              text: "OK",
-              style: "default",
-              onPress: () => router.replace("/(tabs)/dashboard"),
-            },
-          ],
-        );
+        // Trigger login through auth context
+        login();
+
+        // Small delay for smooth transition animation
+        setTimeout(() => {
+          router.replace("/(tabs)/dashboard");
+        }, 150);
       } else {
         showAlert(
           "Registration Failed",
@@ -188,9 +186,11 @@ export default function Register() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
     >
       <ScrollView
+        style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -290,7 +290,7 @@ export default function Register() {
 
           <TouchableOpacity
             style={styles.fullWidthButton}
-            onPress={() => router.push("/login")}
+            onPress={() => router.replace("/(auth)/login")}
             disabled={isLoading}
           >
             <Text style={styles.fullWidthButtonText}>Sign In</Text>
@@ -314,6 +314,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#0d0d0d",
+  },
+  scrollView: {
+    flex: 1,
   },
   scrollContent: {
     flexGrow: 1,

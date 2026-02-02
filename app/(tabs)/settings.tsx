@@ -1,8 +1,11 @@
+import ThemedAlert, { useThemedAlert } from "@/components/ThemedAlert";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useAuth } from "@/contexts/AuthContext";
-import { useSettings } from "@/contexts/SettingsContext";
 import { router } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,23 +13,195 @@ import {
   View,
 } from "react-native";
 
+// Firebase Realtime Database URL
+const FIREBASE_URL =
+  "https://gsafe-eeead-default-rtdb.asia-southeast1.firebasedatabase.app/";
+
 const researchers = [
-  "Arby Bagalay",
-  "Fyke Lleva",
-  "Juan dela Cruz",
-  "Maria Santos",
-  "Pedro Reyes",
-  "Ana Garcia",
+  { role: "Project Manager", name: "Jiro Leigh C. Ponce" },
+  { role: "Lead Programmer", name: "Abegail R. Bagalay" },
+  { role: "Data Analyst", name: "Deserie M. Asilo" },
+  { role: "Document Specialist", name: "John Joshua B. Bertulfo" },
+  { role: "Document Specialist", name: "Ayessa Kaith R. Baluyot" },
 ];
 
+type ModeType = "auto" | "manual";
+
+// Helper function for fetch with timeout
+const fetchWithTimeout = async (
+  url: string,
+  options: RequestInit = {},
+  timeout = 5000,
+): Promise<Response> => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(id);
+    return response;
+  } catch (error) {
+    clearTimeout(id);
+    throw error;
+  }
+};
+
 export default function Settings() {
-  const { mode, setMode } = useSettings();
+  const [mode, setMode] = useState<ModeType>("manual");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const { alertConfig, showAlert, hideAlert } = useThemedAlert();
   const { logout } = useAuth();
 
-  const handleLogout = async () => {
-    await logout();
-    router.replace("/(auth)/login");
+  // Use ref to prevent duplicate fetches
+  const hasFetched = useRef(false);
+
+  // Fetch mode from Firebase on mount and set up polling
+  useEffect(() => {
+    if (!hasFetched.current) {
+      hasFetched.current = true;
+      fetchModeFromFirebase();
+    }
+
+    // Poll every 3 seconds for real-time updates
+    const pollInterval = setInterval(() => {
+      fetchModeFromFirebase();
+    }, 3000);
+
+    // Cleanup on unmount
+    return () => clearInterval(pollInterval);
+  }, []);
+
+  const fetchModeFromFirebase = async () => {
+    try {
+      const response = await fetchWithTimeout(
+        `${FIREBASE_URL}config/mode.json`,
+      );
+      if (response.ok) {
+        const data = await response.json();
+        if (data && (data.mode === "auto" || data.mode === "manual")) {
+          // Only update state if mode changed (prevents unnecessary re-renders)
+          setMode((prev) => {
+            if (prev !== data.mode) {
+              return data.mode;
+            }
+            return prev;
+          });
+        }
+      }
+    } catch (error) {
+      // Silently handle timeout errors during polling
+      if (error instanceof Error && error.name === "AbortError") {
+        // Request was aborted due to timeout - this is expected
+      } else {
+        console.error("Error fetching mode:", error);
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
+
+  const saveModeToFirebase = async (newMode: ModeType) => {
+    setIsSaving(true);
+    try {
+      // Save the mode setting
+      const modeResponse = await fetchWithTimeout(
+        `${FIREBASE_URL}config/mode.json`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode: newMode,
+            updatedAt: new Date().toISOString(),
+          }),
+        },
+        10000, // 10 second timeout for updates
+      );
+
+      if (!modeResponse.ok) {
+        throw new Error("Failed to save mode");
+      }
+
+      // If switching to automatic mode, turn ON the regulator
+      if (newMode === "auto") {
+        const regulatorResponse = await fetchWithTimeout(
+          `${FIREBASE_URL}regulator/state.json`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              isOn: true,
+              updatedAt: new Date().toISOString(),
+            }),
+          },
+          10000,
+        );
+
+        if (!regulatorResponse.ok) {
+          throw new Error("Failed to turn on regulator");
+        }
+      }
+
+      setMode(newMode);
+
+      // Add 3-second delay before completing
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    } catch (error) {
+      console.error("Error saving mode:", error);
+      showAlert("Error", "Failed to save configuration. Please try again.", [
+        { text: "OK", style: "default" },
+      ]);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleModeChange = (newMode: ModeType) => {
+    if (isSaving) return;
+
+    if (newMode === mode) return; // No change
+
+    if (newMode === "auto") {
+      showAlert(
+        "Switch to Automatic Mode?",
+        "This will automatically turn ON the gas regulator. The system will automatically monitor and control gas flow.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Confirm",
+            style: "default",
+            onPress: () => saveModeToFirebase(newMode),
+          },
+        ],
+      );
+    } else {
+      saveModeToFirebase(newMode);
+    }
+  };
+
+  const handleLogout = async () => {
+    // Immediately clear the auth state
+    await logout();
+
+    // Small delay for smooth transition animation
+    setTimeout(() => {
+      router.replace("/(auth)/login");
+    }, 150);
+  };
+
+  if (isLoading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4caf50" />
+          <Text style={styles.loadingText}>Loading settings...</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -61,8 +236,14 @@ export default function Settings() {
 
           {/* Automatic Mode */}
           <TouchableOpacity
-            style={[styles.modeRow, mode === "auto" && styles.modeRowActive]}
-            onPress={() => setMode("auto")}
+            style={[
+              styles.modeRow,
+              mode === "auto" && styles.modeRowActive,
+              isSaving && styles.modeRowDisabled,
+            ]}
+            onPress={() => handleModeChange("auto")}
+            activeOpacity={0.8}
+            disabled={isSaving}
           >
             <View style={styles.modeLeft}>
               <View
@@ -105,8 +286,14 @@ export default function Settings() {
 
           {/* Manual Mode */}
           <TouchableOpacity
-            style={[styles.modeRow, mode === "manual" && styles.modeRowActive]}
-            onPress={() => setMode("manual")}
+            style={[
+              styles.modeRow,
+              mode === "manual" && styles.modeRowActive,
+              isSaving && styles.modeRowDisabled,
+            ]}
+            onPress={() => handleModeChange("manual")}
+            activeOpacity={0.8}
+            disabled={isSaving}
           >
             <View style={styles.modeLeft}>
               <View
@@ -146,6 +333,14 @@ export default function Settings() {
               )}
             </View>
           </TouchableOpacity>
+
+          {/* Saving Indicator */}
+          {isSaving && (
+            <View style={styles.savingIndicator}>
+              <ActivityIndicator size="small" color="#4caf50" />
+              <Text style={styles.savingText}>Updating configuration...</Text>
+            </View>
+          )}
         </View>
 
         {/* About Card */}
@@ -179,12 +374,24 @@ export default function Settings() {
             </View>
           </View>
           <View style={styles.researchersGrid}>
-            {researchers.map((name, index) => (
-              <View key={index} style={styles.researcherItem}>
-                <View style={styles.researcherAvatar}>
-                  <Text style={styles.researcherInitial}>{name.charAt(0)}</Text>
+            {researchers.map((researcher, index) => (
+              <View key={index}>
+                <View style={styles.researcherItem}>
+                  <View style={styles.researcherLeft}>
+                    <View style={styles.researcherAvatar}>
+                      <Text style={styles.researcherInitial}>
+                        {researcher.name.charAt(0)}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.researcherInfo}>
+                    <Text style={styles.researcherName}>{researcher.name}</Text>
+                    <Text style={styles.researcherRole}>{researcher.role}</Text>
+                  </View>
                 </View>
-                <Text style={styles.researcherName}>{name}</Text>
+                {index < researchers.length - 1 && (
+                  <View style={styles.researcherSeparator} />
+                )}
               </View>
             ))}
           </View>
@@ -209,6 +416,15 @@ export default function Settings() {
         {/* Bottom spacing */}
         <View style={styles.bottomSpacing} />
       </ScrollView>
+
+      {/* Themed Alert */}
+      <ThemedAlert
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        buttons={alertConfig.buttons}
+        onDismiss={hideAlert}
+      />
     </View>
   );
 }
@@ -218,8 +434,18 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#0d0d0d",
   },
+  loadingContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingText: {
+    color: "#888",
+    marginTop: 12,
+    fontSize: 14,
+  },
   header: {
-    paddingTop: 56,
+    paddingTop: Platform.OS === "android" ? 56 : 60,
     backgroundColor: "#161616",
     borderBottomWidth: 0,
     shadowColor: "#000",
@@ -308,6 +534,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(76, 175, 80, 0.08)",
     borderColor: "#4caf50",
   },
+  modeRowDisabled: {
+    opacity: 0.6,
+  },
   modeLeft: {
     flexDirection: "row",
     alignItems: "center",
@@ -354,6 +583,20 @@ const styles = StyleSheet.create({
     borderColor: "#4caf50",
     backgroundColor: "#4caf50",
   },
+  savingIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#2a2a2a",
+    marginTop: 8,
+  },
+  savingText: {
+    color: "#4caf50",
+    marginLeft: 8,
+    fontSize: 13,
+  },
   aboutContent: {
     alignItems: "center",
     paddingVertical: 8,
@@ -381,15 +624,23 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
   },
   researchersGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
+    flexDirection: "column",
+    gap: 0,
   },
   researcherItem: {
     flexDirection: "row",
+    alignItems: "flex-start",
+    width: "100%",
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+  },
+  researcherLeft: {
     alignItems: "center",
-    width: "46%",
-    paddingVertical: 8,
+    marginRight: 12,
+  },
+  researcherInfo: {
+    flex: 1,
+    justifyContent: "center",
   },
   researcherAvatar: {
     width: 36,
@@ -398,7 +649,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#2d2d2d",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 10,
   },
   researcherInitial: {
     fontSize: 14,
@@ -406,9 +656,19 @@ const styles = StyleSheet.create({
     color: "#4caf50",
   },
   researcherName: {
-    flex: 1,
-    fontSize: 13,
+    fontSize: 14,
+    fontWeight: "600",
     color: "#fff",
+    marginBottom: 2,
+  },
+  researcherRole: {
+    fontSize: 12,
+    color: "#888",
+  },
+  researcherSeparator: {
+    height: 1,
+    backgroundColor: "#2a2a2a",
+    marginLeft: 52,
   },
   researcherFooter: {
     flexDirection: "row",
@@ -441,6 +701,6 @@ const styles = StyleSheet.create({
     marginLeft: 10,
   },
   bottomSpacing: {
-    height: 20,
+    height: 100,
   },
 });

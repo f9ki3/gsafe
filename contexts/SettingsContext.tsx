@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   createContext,
   ReactNode,
@@ -7,11 +6,16 @@ import {
   useState,
 } from "react";
 
+// Firebase Realtime Database URL
+const FIREBASE_URL =
+  "https://gsafe-eeead-default-rtdb.asia-southeast1.firebasedatabase.app/";
+
 type Mode = "auto" | "manual";
 
 interface SettingsContextType {
   mode: Mode;
   setMode: (mode: Mode) => void;
+  isLoading: boolean;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(
@@ -19,34 +23,48 @@ const SettingsContext = createContext<SettingsContextType | undefined>(
 );
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const [mode, setModeState] = useState<Mode>("auto");
+  const [mode, setModeState] = useState<Mode>("manual");
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    loadMode();
+    // Initial fetch
+    fetchModeFromFirebase();
+
+    // Set up polling every 2 seconds for real-time updates
+    const pollInterval = setInterval(() => {
+      fetchModeFromFirebase();
+    }, 2000);
+
+    // Cleanup interval on unmount
+    return () => clearInterval(pollInterval);
   }, []);
 
-  const loadMode = async () => {
+  const fetchModeFromFirebase = async () => {
     try {
-      const savedMode = await AsyncStorage.getItem("mode");
-      if (savedMode) {
-        setModeState(savedMode as Mode);
+      const response = await fetch(`${FIREBASE_URL}config/mode.json`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && (data.mode === "auto" || data.mode === "manual")) {
+          setModeState(data.mode);
+        }
       }
     } catch (error) {
-      console.error("Failed to load mode:", error);
+      console.error("Error polling mode:", error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const setMode = async (newMode: Mode) => {
+    // Optimistic update
     setModeState(newMode);
-    try {
-      await AsyncStorage.setItem("mode", newMode);
-    } catch (error) {
-      console.error("Failed to save mode:", error);
-    }
+
+    // The actual saving to Firebase is handled by the settings page
+    // This context provides real-time mode updates to all subscribers
   };
 
   return (
-    <SettingsContext.Provider value={{ mode, setMode }}>
+    <SettingsContext.Provider value={{ mode, setMode, isLoading }}>
       {children}
     </SettingsContext.Provider>
   );

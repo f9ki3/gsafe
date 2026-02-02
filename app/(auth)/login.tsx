@@ -93,7 +93,7 @@ export default function Login() {
             {
               text: "Create Account",
               style: "default",
-              onPress: () => router.push("/register"),
+              onPress: () => router.replace("/(auth)/register"),
             },
           ],
         );
@@ -113,18 +113,10 @@ export default function Login() {
       // Login successful - save to local storage via AuthContext
       login();
 
-      // Show success message
-      showAlert(
-        "Welcome Back!",
-        `Hello, ${userData.fullName}! You've successfully logged in.`,
-        [
-          {
-            text: "OK",
-            style: "default",
-            onPress: () => router.replace("/(tabs)/dashboard"),
-          },
-        ],
-      );
+      // Small delay for smooth transition animation
+      setTimeout(() => {
+        router.replace("/(tabs)/dashboard");
+      }, 150);
     } catch (error) {
       showAlert(
         "Error",
@@ -140,9 +132,11 @@ export default function Login() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
     >
       <ScrollView
+        style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -213,7 +207,7 @@ export default function Login() {
 
           <TouchableOpacity
             style={styles.fullWidthButton}
-            onPress={() => router.push("/register")}
+            onPress={() => router.replace("/(auth)/register")}
             disabled={isLoading}
           >
             <Text style={styles.fullWidthButtonText}>Create Account</Text>
@@ -237,6 +231,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#0d0d0d",
+  },
+  scrollView: {
+    flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
